@@ -247,7 +247,7 @@ def load_model():
     device = torch.device("cpu")
     model = ClauseSegmentationModel(
         input_size=124,
-        hidden_size=64,
+        hidden_size=96,
         num_layers=2,
         num_speakers=len(speakerMap),
     )
@@ -266,21 +266,22 @@ def process_wav(model, fnameWav, allowedSpeakers=None, speakerCollate=None):
 
 
 if __name__ == '__main__':
-    # main(preprocess=True, overwrite=False)
+    # main(preprocess=False, overwrite=False)
     model = load_model()
     # process_wav(model, 'prepared/test/RA-2021.06-MU-borba_s_vreditelyami.wav', allowedSpeakers=[0, 1, 5])
-    process_wav(model, 'prepared/test/RSK67-2026.08.03-MU-perepesj_piroshki_kwarnjanj.wav',
-                allowedSpeakers=[0, 1, 17],
-                speakerCollate={
-                    'AS': 'other',
-                    'AL': 'other',
-                    'RA': 'other',
-                    'TS': 'other',
-                    'MAB81': 'other',
-                    'AVB62': 'other',
-                    'NV': 'other',
-                    'IM': 'other',
-                    'AVS': 'other',
-                    'ANS': 'other'
-                })
+    process_wav(model, 'prepared/test/SN-2016.01.06-TA-germany.wav', allowedSpeakers=[0, 2, 12])
+    # process_wav(model, 'prepared/test/RSK67-2026.08.03-MU-perepesj_piroshki_kwarnjanj.wav',
+    #             allowedSpeakers=[0, 1, 17],
+    #             speakerCollate={
+    #                 'AS': 'other',
+    #                 'AL': 'other',
+    #                 'RA': 'other',
+    #                 'TS': 'other',
+    #                 'MAB81': 'other',
+    #                 'AVB62': 'other',
+    #                 'NV': 'other',
+    #                 'IM': 'other',
+    #                 'AVS': 'other',
+    #                 'ANS': 'other'
+    #             })
     # diarize_wav(model, 'corpus/sound/2022/RA_TS-2022.07.13-MU-experiment_partitives_anim.wav', SPEAKER_CODES)

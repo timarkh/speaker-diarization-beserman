@@ -178,7 +178,7 @@ class ClauseSegmentationModel(nn.Module):
     def __init__(
         self,
         input_size=124,
-        hidden_size=64,
+        hidden_size=96,
         num_layers=2,
         num_speakers=11,
         dropout=0.4,
