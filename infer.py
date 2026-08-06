@@ -90,7 +90,7 @@ def get_segments(outputs, timeChunk, speakerCodes, minBoundaryDist, minClauseMs,
     Get segments for one chunk of frames.
     :return: {speaker: [segments in seconds]}
     """
-    allowOther = (not allowedSpeakers or (any(speakerCodes[sp] == 'other' for sp in allowedSpeakers)))
+    allowOther = (not allowedSpeakers or (any(speakerCodes[sp - 1] == 'other' for sp in allowedSpeakers)))
     minFramesBreak = 10
     segStarts = {speakerCodes[s - 1]: -1 for s in allowedSpeakers if s != 0}
     segEnds = {speakerCodes[s - 1]: -1 for s in allowedSpeakers if s != 0}

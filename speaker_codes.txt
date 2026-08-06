@@ -9,6 +9,9 @@ AVB62
 NV
 AS
 IM
-AVS
-ANS
+SN
+VM
+VN
+LV
+EVP
 other

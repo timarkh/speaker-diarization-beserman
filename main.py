@@ -40,28 +40,6 @@ with open('speaker_codes.txt', 'r', encoding='utf-8') as fIn:
             continue
         SPEAKER_CODES.append(line)
 
-#
-# SPEAKER_CODES = (
-#     'Interviewer_MU',
-#     'Interviewer_TA',
-#     'AL',
-#     'AP',
-#     'RA',
-#     'TS',
-#     'MAB81',
-#     'AVB62',
-#     'NV',
-#     'AS',
-#     'IM',
-#     'AVS',
-#     'ANS',
-#     'VM',
-#     'VN',
-#     'LV',
-#     'EVP',
-#     'other'
-# )
-
 speakerMap = {
     '<silence>': 0
 }
@@ -98,15 +76,15 @@ def parse_eaf(eaf_path: Path):
         speakerCode = tier_name[3:]
         if not tier_name.endswith(tuple(['@' + sc for sc in SPEAKER_CODES])):
             speakerCode = 'other'
-        annotations = []
+        if speakerCode not in tiers:
+            tiers[speakerCode] = []
         annots = eaf.get_annotation_data_for_tier(tier_name)
         for begin, end, value in annots:
-            annotations.append({
+            tiers[speakerCode].append({
                 "start_ms": begin,
                 "end_ms": end,
                 "text": value
             })
-        tiers[speakerCode] = annotations
     return tiers
 
 def create_eaf(segments, fnameOut, fnameWav):
@@ -288,21 +266,21 @@ def process_wav(model, fnameWav, allowedSpeakers=None, speakerCollate=None):
 
 
 if __name__ == '__main__':
-    # main(preprocess=True, overwrite=False)
+    main(preprocess=True, overwrite=False)
     model = load_model()
-    # process_wav(model, 'prepared/test/RA-2021.06-MU-borba_s_vreditelyami.wav', allowedSpeakers=[0, 1, 5])
-    process_wav(model, 'prepared/test/RSK-2026.08.03-MU-perepesj_piroshki_kwarnjanj.wav',
-                allowedSpeakers=[0, 1, 6, 8, 10, 14],
-                speakerCollate={
-                    'AS': 'other',
-                    'AL': 'other',
-                    'RA': 'other',
-                    'TS': 'other',
-                    'MAB81': 'other',
-                    'AVB62': 'other',
-                    'NV': 'other',
-                    'IM': 'other',
-                    'AVS': 'other',
-                    'ANS': 'other'
-                })
+    process_wav(model, 'prepared/test/RA-2021.06-MU-borba_s_vreditelyami.wav', allowedSpeakers=[0, 1, 5])
+    # process_wav(model, 'prepared/test/RSK-2026.08.03-MU-perepesj_piroshki_kwarnjanj.wav',
+    #             allowedSpeakers=[0, 1, 6, 8, 10, 14],
+    #             speakerCollate={
+    #                 'AS': 'other',
+    #                 'AL': 'other',
+    #                 'RA': 'other',
+    #                 'TS': 'other',
+    #                 'MAB81': 'other',
+    #                 'AVB62': 'other',
+    #                 'NV': 'other',
+    #                 'IM': 'other',
+    #                 'AVS': 'other',
+    #                 'ANS': 'other'
+    #             })
     # diarize_wav(model, 'corpus/sound/2022/RA_TS-2022.07.13-MU-experiment_partitives_anim.wav', SPEAKER_CODES)

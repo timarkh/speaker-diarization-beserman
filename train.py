@@ -320,7 +320,7 @@ def plot_learning_curve(train_losses, valid_losses):
     plt.savefig("loss.png", dpi=150)
 
 
-def train_model(model, num_speakers, max_epochs=80, early_stop=8, min_delta=1e-3):
+def train_model(model, num_speakers, max_epochs=80, early_stop=5, min_delta=1e-3):
     trainLoader = DataLoader(
         SpeechDataset("prepared/train"),
         batch_size=16,

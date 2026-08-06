@@ -130,6 +130,14 @@ def extract_features(
         rms.shape[1],
     )
 
+    # centroid = librosa.feature.spectral_centroid(
+    #     y=waveform,
+    #     sr=sr,
+    #     n_fft=n_fft,
+    #     hop_length=hop_length,
+    # )
+    # centroid = centroid[:, :n_frames]
+
     logmel = logmel[:, :n_frames]
     delta = delta[:, :n_frames]
     delta2 = delta2[:, :n_frames]
