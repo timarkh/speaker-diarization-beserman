@@ -1,0 +1,291 @@
+import re
+import os
+import random
+import shutil
+from pathlib import Path
+import pympi
+import torch
+
+from process_audio import extract_features, load_audio
+from train import prepare_labels, write_training_dataset, ClauseSegmentationModel, train_model, calculate_mean_std
+from infer import diarize_wav
+
+
+# ----------------------------------------------------------------------
+# Configuration
+# ----------------------------------------------------------------------
+
+CORPUS_DIR = Path("./corpus")
+
+AUDIO_EXTENSIONS = [
+    ".wav",
+    ".WAV",
+    ".mp3",
+    ".MP3",
+    ".ogg",
+    ".OGG",
+    ".m4a",
+    ".M4A",
+    ".wma",
+    ".M4A",
+    ".mp4",
+    ".MP4"
+]
+
+SPEAKER_CODES = []
+with open('speaker_codes.txt', 'r', encoding='utf-8') as fIn:
+    for line in fIn:
+        line = line.strip()
+        if not line:
+            continue
+        SPEAKER_CODES.append(line)
+
+#
+# SPEAKER_CODES = (
+#     'Interviewer_MU',
+#     'Interviewer_TA',
+#     'AL',
+#     'AP',
+#     'RA',
+#     'TS',
+#     'MAB81',
+#     'AVB62',
+#     'NV',
+#     'AS',
+#     'IM',
+#     'AVS',
+#     'ANS',
+#     'VM',
+#     'VN',
+#     'LV',
+#     'EVP',
+#     'other'
+# )
+
+speakerMap = {
+    '<silence>': 0
+}
+for i in range(len(SPEAKER_CODES)):
+    speakerMap[SPEAKER_CODES[i]] = i + 1
+
+# ----------------------------------------------------------------------
+# Utilities
+# ----------------------------------------------------------------------
+
+def find_audio_file(fnameEaf):
+    """
+    Find an audio file with the same basename as the ELAN file.
+    """
+    fnameEaf = re.sub('/eaf/', '/sound/', fnameEaf)
+    for ext in AUDIO_EXTENSIONS:
+        candidate = fnameEaf[:-4] + ext
+        if os.path.exists(candidate):
+            return Path(candidate)
+    return None
+
+
+def parse_eaf(eaf_path: Path):
+    """
+    Read an ELAN file and return a simple representation.
+    """
+
+    eaf = pympi.Elan.Eaf(str(eaf_path))
+    tiers = {}
+    for tier_name in eaf.get_tier_names():
+        tier_name = re.sub('@MBe?\\b', '@MAB81', tier_name)
+        if not tier_name.startswith('tx@'):
+            continue
+        speakerCode = tier_name[3:]
+        if not tier_name.endswith(tuple(['@' + sc for sc in SPEAKER_CODES])):
+            speakerCode = 'other'
+        annotations = []
+        annots = eaf.get_annotation_data_for_tier(tier_name)
+        for begin, end, value in annots:
+            annotations.append({
+                "start_ms": begin,
+                "end_ms": end,
+                "text": value
+            })
+        tiers[speakerCode] = annotations
+    return tiers
+
+def create_eaf(segments, fnameOut, fnameWav):
+    """
+    Create an ELAN file based on the inferred segments.
+
+    Parameters
+    ----------
+    segments : dict
+        Example:
+        {
+            "AB": [[1000, 1400], [1450, 1700]],
+            "CD": [[1800, 2500]]
+        }
+
+    output_file : str
+    """
+    if not fnameOut.endswith('.eaf'):
+        return
+    eaf = pympi.Elan.Eaf()
+    eaf.add_linguistic_type(
+        "transcription",
+        timealignable=True
+    )
+    eaf.add_linguistic_type(
+        "translation",
+        constraints="Symbolic_Association",
+        timealignable=False
+    )
+    eaf.add_linguistic_type(
+        "privacy",
+        timealignable=True
+    )
+    eaf.add_linked_file(
+        file_path='./' + re.sub('.*[/\\\\]', '', fnameWav),
+        relpath='./' + re.sub('.*[/\\\\]', '', fnameWav),
+        mimetype='audio/x-wav'
+    )
+    for speaker in sorted(segments, key=lambda s: (-len(s), s)):
+        intervals = segments[speaker]
+        tx = f"tx@{speaker}"
+        en = f"ft_en@{speaker}"
+        ru = f"ft_ru@{speaker}"
+
+        eaf.add_tier(
+            tx,
+            ling="transcription",
+            part=speaker
+        )
+        eaf.add_tier(
+            en,
+            ling="translation",
+            parent=tx,
+            part=speaker
+        )
+        eaf.add_tier(
+            ru,
+            ling="translation",
+            parent=tx,
+            part=speaker
+        )
+
+        for start_ms, end_ms in intervals:
+            eaf.add_annotation(
+                tx,
+                start_ms,
+                end_ms,
+                value=""
+            )
+            eaf.add_ref_annotation(
+                en,
+                tx,
+                start_ms,
+                value=""
+            )
+            eaf.add_ref_annotation(
+                ru,
+                tx,
+                start_ms,
+                value=""
+            )
+    eaf.to_file(fnameOut)
+
+
+# ----------------------------------------------------------------------
+# Main
+# ----------------------------------------------------------------------
+
+def preprocess_eaf(sr=16000, overwrite=False):
+    if overwrite:
+        if os.path.exists('prepared/train'):
+            shutil.rmtree('prepared/train')
+        os.makedirs('prepared/train')
+        if os.path.exists('prepared/validation'):
+            shutil.rmtree('prepared/validation')
+        os.makedirs('prepared/validation')
+
+    for root, dirs, files in os.walk(os.path.join(CORPUS_DIR, 'eaf')):
+        for fnameEaf in files:
+            if not fnameEaf.lower().endswith('.eaf'):
+                continue
+            fnameEafFull = os.path.join(root, fnameEaf)
+            print("=" * 70)
+            print(fnameEafFull)
+            pathSound = find_audio_file(fnameEafFull)
+
+            if pathSound is None:
+                print("  ERROR: matching audio file not found.")
+                continue
+
+            print(f"  Audio : {pathSound.name}")
+            tiers = parse_eaf(Path(fnameEafFull))
+            if random.random() < 0.15 and len([t for t in tiers if len(tiers[t]) >= 3]) >= 2:
+                outPath = 'prepared/validation'
+            else:
+                outPath = 'prepared/train'
+            fnameNpz = os.path.join(outPath, fnameEaf[:-3] + 'npz')
+            fnameNpzTrain = os.path.join('prepared/train', fnameEaf[:-3] + 'npz')
+            fnameNpzValid = os.path.join('prepared/validation', fnameEaf[:-3] + 'npz')
+            if os.path.exists(fnameNpzTrain) or os.path.exists(fnameNpzValid):
+                print('Skipping this file.')
+                continue
+
+            waveform = load_audio(pathSound, sr=sr)
+            features, frameTimes = extract_features(waveform)
+            speech, speaker, boundary = prepare_labels(tiers, frameTimes, speakerMap)
+            n = write_training_dataset(
+                fnameNpz,
+                features,
+                speech,
+                speaker,
+                boundary,
+            )
+            print(f"{n} training examples written.")
+
+            duration = len(waveform) / (sr * 60)
+
+            print(f"  Duration    : {duration:.1f} min")
+            print(f"  Samples     : {len(waveform)}")
+            print(f"  Tiers       : {len(tiers)}")
+
+            for tier_name, annots in tiers.items():
+                print(f"      {tier_name:20s} {len(annots):6d} annotations")
+
+    calculate_mean_std()
+    print("\nPreprocessing done.")
+
+
+def main(preprocess=True, overwrite=False):
+    if preprocess:
+        preprocess_eaf(overwrite=overwrite)
+    model = ClauseSegmentationModel(num_speakers=len(speakerMap))
+    train_model(model, num_speakers=len(speakerMap))
+    print("\nTraining done.")
+
+
+def load_model():
+    device = torch.device("cpu")
+    model = ClauseSegmentationModel(
+        input_size=124,
+        hidden_size=64,
+        num_layers=2,
+        num_speakers=len(speakerMap),
+    )
+    model.load_state_dict(
+        torch.load("best_model.pt", map_location=device)
+    )
+    model.eval()
+    return model
+
+
+def process_wav(model, fnameWav, allowedSpeakers=None):
+    segments = diarize_wav(model, fnameWav, SPEAKER_CODES, allowedSpeakers=allowedSpeakers)
+    fnameElan = re.sub('\\.[^.]*$', '.eaf', fnameWav)
+    create_eaf(segments, fnameElan, fnameWav)
+
+
+if __name__ == '__main__':
+    main(preprocess=True, overwrite=False)
+    model = load_model()
+    process_wav(model, 'prepared/test/RA-2021.06-MU-borba_s_vreditelyami.wav', allowedSpeakers=[0, 1, 5])
+    # diarize_wav(model, 'corpus/sound/2022/RA_TS-2022.07.13-MU-experiment_partitives_anim.wav', SPEAKER_CODES)

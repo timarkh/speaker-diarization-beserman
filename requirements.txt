@@ -1,0 +1,5 @@
+numpy<2.5
+torch
+librosa
+numba
+scipy
