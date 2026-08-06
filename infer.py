@@ -83,11 +83,14 @@ def create_chunks(features, frame_times, chunk_size=1000, overlap=500):
     )
 
 
-def get_segments(outputs, timeChunk, speakerCodes, minBoundaryDist, minClauseMs, chunk_size=1000, allowedSpeakers=None):
+def get_segments(outputs, timeChunk, speakerCodes, minBoundaryDist, minClauseMs, chunk_size=1000,
+                 allowedSpeakers=None,
+                 speakerCollate=None):
     """
     Get segments for one chunk of frames.
     :return: {speaker: [segments in seconds]}
     """
+    allowOther = (not allowedSpeakers or (any(speakerCodes[sp] == 'other' for sp in allowedSpeakers)))
     minFramesBreak = 10
     segStarts = {speakerCodes[s - 1]: -1 for s in allowedSpeakers if s != 0}
     segEnds = {speakerCodes[s - 1]: -1 for s in allowedSpeakers if s != 0}
@@ -110,7 +113,7 @@ def get_segments(outputs, timeChunk, speakerCodes, minBoundaryDist, minClauseMs,
     boundary = torch.sigmoid(outputs["boundary"]).squeeze().cpu().numpy()
     bndPeaks, bndProps = find_peaks(
         boundary,
-        height=0.02,
+        height=0.016,
         distance=minBoundaryDist
     )
     # print([(t[0].item(), t[1].item())
@@ -118,11 +121,17 @@ def get_segments(outputs, timeChunk, speakerCodes, minBoundaryDist, minClauseMs,
 
     for iFrame in range(chunk_size):
         curSpeaker = speaker[iFrame]
-        if curSpeaker > 0:
-            curSpeaker = speakerCodes[curSpeaker - 1]
         curSpeech = speech[iFrame]
         curTime = timeChunk[iFrame]
         curBoundary = (iFrame in bndPeaks)
+
+        if curSpeaker > 0:
+            curSpeaker = speakerCodes[curSpeaker - 1]
+            if curSpeaker in speakerCollate:
+                curSpeaker = speakerCollate[curSpeaker]
+        elif allowOther and curSpeech == 1:
+            curSpeaker = 'other'
+
         noSpeech = (curSpeaker == 0 or curSpeech == 0)
         for spSeg in segStarts:
             if segStarts[spSeg] >= 0 and (noSpeech or spSeg != curSpeaker):
@@ -215,7 +224,8 @@ def diarize_wav(model,
                 hop_length=160,
                 sr=16000,
                 minClauseMs=400,
-                allowedSpeakers=None):
+                allowedSpeakers=None,
+                speakerCollate=None):
     if 0 not in allowedSpeakers:
         allowedSpeakers.append(0)   # Silence
 
@@ -231,6 +241,7 @@ def diarize_wav(model,
 
     with torch.no_grad():
         for iChunk in range(len(feature_chunks)):
+            print('Processing chunk', iChunk, '/', len(feature_chunks), '...')
             chunk = feature_chunks[iChunk]
 
             x = torch.from_numpy(chunk).unsqueeze(0)
@@ -243,7 +254,8 @@ def diarize_wav(model,
                 minBoundaryDist,
                 minClauseMs,
                 chunk_size=chunk_size,
-                allowedSpeakers=allowedSpeakers
+                allowedSpeakers=allowedSpeakers,
+                speakerCollate=speakerCollate
             )
             for sp in segments:
                 segments[sp] += curSegments[sp]

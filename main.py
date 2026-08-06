@@ -147,6 +147,8 @@ def create_eaf(segments, fnameOut, fnameWav):
     )
     for speaker in sorted(segments, key=lambda s: (-len(s), s)):
         intervals = segments[speaker]
+        if len(intervals) <= 0:
+            continue
         tx = f"tx@{speaker}"
         en = f"ft_en@{speaker}"
         ru = f"ft_ru@{speaker}"
@@ -278,14 +280,29 @@ def load_model():
     return model
 
 
-def process_wav(model, fnameWav, allowedSpeakers=None):
-    segments = diarize_wav(model, fnameWav, SPEAKER_CODES, allowedSpeakers=allowedSpeakers)
+def process_wav(model, fnameWav, allowedSpeakers=None, speakerCollate=None):
+    segments = diarize_wav(model, fnameWav, SPEAKER_CODES,
+                           allowedSpeakers=allowedSpeakers, speakerCollate=speakerCollate)
     fnameElan = re.sub('\\.[^.]*$', '.eaf', fnameWav)
     create_eaf(segments, fnameElan, fnameWav)
 
 
 if __name__ == '__main__':
-    main(preprocess=True, overwrite=False)
+    # main(preprocess=True, overwrite=False)
     model = load_model()
-    process_wav(model, 'prepared/test/RA-2021.06-MU-borba_s_vreditelyami.wav', allowedSpeakers=[0, 1, 5])
+    # process_wav(model, 'prepared/test/RA-2021.06-MU-borba_s_vreditelyami.wav', allowedSpeakers=[0, 1, 5])
+    process_wav(model, 'prepared/test/RSK-2026.08.03-MU-perepesj_piroshki_kwarnjanj.wav',
+                allowedSpeakers=[0, 1, 6, 8, 10, 14],
+                speakerCollate={
+                    'AS': 'other',
+                    'AL': 'other',
+                    'RA': 'other',
+                    'TS': 'other',
+                    'MAB81': 'other',
+                    'AVB62': 'other',
+                    'NV': 'other',
+                    'IM': 'other',
+                    'AVS': 'other',
+                    'ANS': 'other'
+                })
     # diarize_wav(model, 'corpus/sound/2022/RA_TS-2022.07.13-MU-experiment_partitives_anim.wav', SPEAKER_CODES)
