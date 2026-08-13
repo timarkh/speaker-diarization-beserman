@@ -265,11 +265,39 @@ def process_wav(model, fnameWav, allowedSpeakers=None, speakerCollate=None):
     create_eaf(segments, fnameElan, fnameWav)
 
 
+def process_wav_files(model, others=False):
+    """
+    Generate EAF for all WAV files in ./wav.
+    Allow only speakers whose codes are extracted from the filename,
+    e.g., AL_RA-xxxxx-MU-xxxx.wav translates to AL, RA, Interviewer_MU.
+    If others == True, then also allow the 'other' class.
+    """
+    for fname in os.listdir('wav'):
+        if not fname.lower().endswith('.wav'):
+            continue
+        m = re.search('^([^-]+)-[^-]+-([^-]+).*?\\.wav', fname, flags=re.I)
+        if not m:
+            print('Bad file name:', fname)
+            continue
+        participantCodes = list(m.group(1).split('_')) + ['Interviewer_' + pn for pn in m.group(2).split('_')]
+        participantIdx = set()
+        if others:
+            participantIdx.add('other')
+        for pc in participantCodes:
+            if pc not in SPEAKER_CODES:
+                pc = 'other'
+            participantIdx.add(1 + SPEAKER_CODES.index(pc))
+        allowedSpeakers = [pi for pi in sorted(participantIdx)]
+        print('Processing', fname, ', allowed speakers:', allowedSpeakers)
+        process_wav(model, os.path.join('wav', fname), allowedSpeakers=allowedSpeakers)
+
+
 if __name__ == '__main__':
     # main(preprocess=False, overwrite=False)
     model = load_model()
     # process_wav(model, 'prepared/test/RA-2021.06-MU-borba_s_vreditelyami.wav', allowedSpeakers=[0, 1, 5])
-    process_wav(model, 'prepared/test/SN-2016.01.06-TA-germany.wav', allowedSpeakers=[0, 2, 12])
+    process_wav_files(model)
+    # process_wav(model, 'prepared/test/SN-2016.01.06-TA-germany.wav', allowedSpeakers=[0, 2, 12])
     # process_wav(model, 'prepared/test/RSK67-2026.08.03-MU-perepesj_piroshki_kwarnjanj.wav',
     #             allowedSpeakers=[0, 1, 17],
     #             speakerCollate={
