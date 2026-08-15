@@ -6,7 +6,7 @@ from pathlib import Path
 import pympi
 import torch
 
-from process_audio import extract_features, load_audio
+from process_audio import extract_features, load_audio, augment_waveform
 from train import prepare_labels, write_training_dataset, ClauseSegmentationModel, train_model, calculate_mean_std
 from infer import diarize_wav
 
@@ -85,6 +85,7 @@ def parse_eaf(eaf_path: Path):
                 "end_ms": end,
                 "text": value
             })
+    print('EAF parsing done. Tiers: ', [sp for sp in sorted(tiers)])
     return tiers
 
 def create_eaf(segments, fnameOut, fnameWav):
@@ -209,24 +210,31 @@ def preprocess_eaf(sr=16000, overwrite=False):
             if os.path.exists(fnameNpzTrain) or os.path.exists(fnameNpzValid):
                 print('Skipping this file.')
                 continue
+            if 'other' in tiers and len(tiers['other']) > 0.6 * sum(len(t) for t in tiers):
+                print('Skipping this file because it contains too many unknown speakers.')
+                continue
 
             waveform = load_audio(pathSound, sr=sr)
-            features, frameTimes = extract_features(waveform)
-            speech, speaker, boundary = prepare_labels(tiers, frameTimes, speakerMap)
-            n = write_training_dataset(
-                fnameNpz,
-                features,
-                speech,
-                speaker,
-                boundary,
-            )
-            print(f"{n} training examples written.")
+            print('Waveform loaded, size: ', waveform.size)
+            waveform = augment_waveform(waveform)
 
             duration = len(waveform) / (sr * 60)
 
             print(f"  Duration    : {duration:.1f} min")
             print(f"  Samples     : {len(waveform)}")
             print(f"  Tiers       : {len(tiers)}")
+
+            features, frameTimes = extract_features(waveform)
+            speech, speaker, speaker2, boundary = prepare_labels(tiers, frameTimes, speakerMap)
+            n = write_training_dataset(
+                fnameNpz,
+                features,
+                speech,
+                speaker,
+                speaker2,
+                boundary,
+            )
+            print(f"{n} training examples written.")
 
             for tier_name, annots in tiers.items():
                 print(f"      {tier_name:20s} {len(annots):6d} annotations")
@@ -246,8 +254,8 @@ def main(preprocess=True, overwrite=False):
 def load_model():
     device = torch.device("cpu")
     model = ClauseSegmentationModel(
-        input_size=124,
-        hidden_size=96,
+        input_size=128,
+        hidden_size=86,
         num_layers=2,
         num_speakers=len(speakerMap),
     )
@@ -293,11 +301,11 @@ def process_wav_files(model, others=False):
 
 
 if __name__ == '__main__':
-    # main(preprocess=False, overwrite=False)
+    # main(preprocess=True, overwrite=False)
     model = load_model()
-    # process_wav(model, 'prepared/test/RA-2021.06-MU-borba_s_vreditelyami.wav', allowedSpeakers=[0, 1, 5])
+    process_wav(model, 'prepared/test/RA-2021.06-MU-borba_s_vreditelyami.wav', allowedSpeakers=[0, 1, 5])
+    process_wav(model, 'prepared/test/SN-2016.01.06-TA-germany.wav', allowedSpeakers=[0, 2, 12])
     process_wav_files(model)
-    # process_wav(model, 'prepared/test/SN-2016.01.06-TA-germany.wav', allowedSpeakers=[0, 2, 12])
     # process_wav(model, 'prepared/test/RSK67-2026.08.03-MU-perepesj_piroshki_kwarnjanj.wav',
     #             allowedSpeakers=[0, 1, 17],
     #             speakerCollate={

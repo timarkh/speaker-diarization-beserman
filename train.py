@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from pathlib import Path
+
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
@@ -41,11 +42,15 @@ def prepare_labels(
 
     speech = np.zeros(n_frames, dtype=np.uint8)
     speaker = np.zeros(n_frames, dtype=np.uint16)
+    speaker2 = np.zeros(n_frames, dtype=np.uint16)
     boundary = np.zeros(n_frames, dtype=np.uint8)
 
-    for speaker_name, annots in annotations.items():
-        if speaker_name not in speaker_map:
-            raise ValueError(f"Unknown speaker: {speaker_name}")
+    for speaker_name in sorted(speaker_map):
+        # Interviewers come first, so that if their speech overlaps with somebody else's,
+        # these frames are encoded as belonging to the native speakers
+        if speaker_name not in annotations:
+             continue
+        annots = annotations[speaker_name]
 
         speaker_id = speaker_map[speaker_name]
         # print(speaker_name, speaker_id)
@@ -73,13 +78,27 @@ def prepare_labels(
             boundary_frame = np.argmin(np.abs(frame_times - end))
             for iFrame in range(max(0, boundary_frame - 2), min(len(boundary), boundary_frame + 3)):
                 boundary[iFrame] = 1.0 / (1 + abs(iFrame - boundary_frame))
-    return speech, speaker, boundary
+    #Now, fill speaker2 (second speaker talking at the same time, if any)
+    for speaker_name in sorted(speaker_map, reverse=True):
+        if speaker_name not in annotations:
+             continue
+        annots = annotations[speaker_name]
+        speaker_id = speaker_map[speaker_name]
+
+        for ann in annots:
+            start = ann["start_ms"]
+            end = ann["end_ms"]
+            mask = (frame_times >= start) & (frame_times < end)
+            speaker2[mask] = speaker_id
+
+    return speech, speaker, speaker2, boundary
 
 def write_training_dataset(
     outfile,
     features,
     speech,
     speaker,
+    speaker2,
     boundary,
     chunk_size=1000,
     overlap=500,
@@ -98,6 +117,9 @@ def write_training_dataset(
         (frames,)
 
     speaker : ndarray
+        (frames,)
+
+    speaker2 : ndarray
         (frames,)
 
     boundary : ndarray
@@ -124,6 +146,7 @@ def write_training_dataset(
     X = []
     Y_speech = []
     Y_speaker = []
+    Y_speaker2 = []
     Y_boundary = []
 
     start = 0
@@ -132,6 +155,7 @@ def write_training_dataset(
         x = features[start:end]
         s = speech[start:end]
         sp = speaker[start:end]
+        sp2 = speaker2[start:end]
         b = boundary[start:end]
 
         # pad the final chunk if necessary
@@ -144,17 +168,20 @@ def write_training_dataset(
             )
             s = np.pad(s, (0, pad))
             sp = np.pad(sp, (0, pad))
+            sp2 = np.pad(sp2, (0, pad))
             b = np.pad(b, (0, pad))
 
         X.append(x)
         Y_speech.append(s)
         Y_speaker.append(sp)
+        Y_speaker2.append(sp2)
         Y_boundary.append(b)
         start += step
 
     X = np.asarray(X, dtype=np.float32)
     Y_speech = np.asarray(Y_speech, dtype=np.uint8)
     Y_speaker = np.asarray(Y_speaker, dtype=np.uint16)
+    Y_speaker2 = np.asarray(Y_speaker2, dtype=np.uint16)
     Y_boundary = np.asarray(Y_boundary, dtype=np.uint8)
 
     np.savez_compressed(
@@ -162,6 +189,7 @@ def write_training_dataset(
         features=X,
         speech=Y_speech,
         speaker=Y_speaker,
+        speaker2=Y_speaker2,
         boundary=Y_boundary,
         sample_rate=16000,
         hop_length=160,
@@ -177,11 +205,11 @@ def write_training_dataset(
 class ClauseSegmentationModel(nn.Module):
     def __init__(
         self,
-        input_size=124,
-        hidden_size=96,
+        input_size=128,
+        hidden_size=86,
         num_layers=2,
         num_speakers=11,
-        dropout=0.4,
+        dropout=0.5,
     ):
         super().__init__()
 
@@ -207,7 +235,7 @@ class ClauseSegmentationModel(nn.Module):
         Parameters
         ----------
         x : FloatTensor
-            (batch, frames, 124)
+            (batch, frames, 128)
 
         Returns
         -------
@@ -235,15 +263,17 @@ class SpeechDataset(Dataset):
             X = data["features"]
             speech = data["speech"]
             speaker = data["speaker"]
+            speaker2 = data["speaker2"]
             boundary = data["boundary"]
 
-            mask = data["mask"] if "mask" in data else None     # mask silence when a segment is at the beginning ot the end of a recording
+            mask = data["mask"] if "mask" in data else None     # mask silence when a segment is at the beginning or the end of a recording
 
             for i in range(X.shape[0]):
                 self.samples.append((
                     X[i],
                     speech[i],
                     speaker[i],
+                    speaker2[i],
                     boundary[i],
                     None if mask is None else mask[i]
                 ))
@@ -252,12 +282,13 @@ class SpeechDataset(Dataset):
         return len(self.samples)
 
     def __getitem__(self, idx):
-        x, speech, speaker, boundary, mask = self.samples[idx]
+        x, speech, speaker, speaker2, boundary, mask = self.samples[idx]
         x = (x - self.normMean) / self.normStd
         sample = {
             "features": torch.from_numpy(x).float(),
             "speech": torch.from_numpy(speech).long(),
             "speaker": torch.from_numpy(speaker).long(),
+            "speaker2": torch.from_numpy(speaker2).long(),
             "boundary": torch.from_numpy(boundary).float(),
         }
         if mask is not None:
@@ -320,6 +351,32 @@ def plot_learning_curve(train_losses, valid_losses):
     plt.savefig("loss.png", dpi=150)
 
 
+def soft_speaker_loss(logits, speaker, speaker2, secondary_weight=0.3):
+    log_probs = torch.log_softmax(logits, dim=-1)
+    primary_loss = -log_probs[
+        torch.arange(logits.shape[0], device=logits.device),
+        speaker
+    ]
+    secondary_loss = -log_probs[
+        torch.arange(logits.shape[0], device=logits.device),
+        speaker2
+    ]
+
+    # If speaker2 == speaker, don't count the secondary speaker separately.
+    has_second = speaker2 != speaker
+    loss = primary_loss.clone()
+    loss[has_second] += (
+        secondary_weight * secondary_loss[has_second]
+    )
+
+    # Normalize so that a single-speaker frame has weight 1
+    # and a two-speaker frame has weight 1 + secondary_weight.
+    weights = torch.ones_like(loss)
+    weights[has_second] += secondary_weight
+
+    return (loss / weights).mean()
+
+
 def train_model(model, num_speakers, max_epochs=80, early_stop=5, min_delta=1e-3):
     trainLoader = DataLoader(
         SpeechDataset("prepared/train"),
@@ -333,7 +390,7 @@ def train_model(model, num_speakers, max_epochs=80, early_stop=5, min_delta=1e-3
         shuffle=True,
         num_workers=0
     )
-    speaker_loss_fn = torch.nn.CrossEntropyLoss()
+    # speaker_loss_fn = torch.nn.CrossEntropyLoss()
     speech_loss_fn = torch.nn.CrossEntropyLoss()
     boundary_loss_fn = torch.nn.BCEWithLogitsLoss(pos_weight = torch.tensor([20]))  # Assuming non-boundary frames occur 20 times more often
     # boundary_loss_fn = torch.nn.MSELoss() # For Gaussian-like distributions of probabilities around peaks
@@ -341,7 +398,7 @@ def train_model(model, num_speakers, max_epochs=80, early_stop=5, min_delta=1e-3
     optimizer = torch.optim.Adam(
         model.parameters(),
         lr=3e-4,
-        weight_decay=1e-5,
+        weight_decay=5e-5,
     )
 
     train_losses = []
@@ -364,9 +421,10 @@ def train_model(model, num_speakers, max_epochs=80, early_stop=5, min_delta=1e-3
 
             outputs = model(batch["features"])
 
-            speaker_loss = speaker_loss_fn(
+            speaker_loss = soft_speaker_loss(
                 outputs["speaker"].reshape(-1, num_speakers),
-                batch["speaker"].reshape(-1)
+                batch["speaker"].reshape(-1),
+                batch["speaker2"].reshape(-1)
             )
 
             speech_loss = speech_loss_fn(
@@ -403,9 +461,10 @@ def train_model(model, num_speakers, max_epochs=80, early_stop=5, min_delta=1e-3
             for batch in validLoader:
                 outputs = model(batch["features"])
 
-                speaker_loss = speaker_loss_fn(
+                speaker_loss = soft_speaker_loss(
                     outputs["speaker"].reshape(-1, num_speakers),
-                    batch["speaker"].reshape(-1)
+                    batch["speaker"].reshape(-1),
+                    batch["speaker2"].reshape(-1)
                 )
 
                 speech_loss = speech_loss_fn(

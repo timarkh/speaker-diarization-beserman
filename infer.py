@@ -127,7 +127,7 @@ def get_segments(outputs, timeChunk, speakerCodes, minBoundaryDist, minClauseMs,
     boundary = torch.sigmoid(outputs["boundary"]).squeeze().cpu().numpy()
     bndPeaks, bndProps = find_peaks(
         boundary,
-        height=0.019,
+        height=0.025,
         distance=minBoundaryDist
     )
     # print([(t[0].item(), t[1].item())
