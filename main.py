@@ -205,7 +205,7 @@ def preprocess_eaf(sr=16000, overwrite=False):
             if os.path.exists(fnameNpzTrain) or os.path.exists(fnameNpzValid):
                 print('Skipping this file.')
                 continue
-            if 'other' in tiers and len(tiers['other']) > 0.75 * sum(len(t) for t in tiers):
+            if 'other' in tiers and len(tiers['other']) > 0.8 * sum(len(t) for t in tiers):
                 print('Skipping this file because it contains too many unknown speakers.')
                 continue
 
@@ -258,7 +258,7 @@ def load_model():
     device = torch.device("cpu")
     model = ClauseSegmentationModel(
         input_size=128,
-        hidden_size=86,
+        hidden_size=96,
         num_layers=2,
         num_speakers=len(speakerMap),
     )
@@ -304,7 +304,7 @@ def process_wav_files(model, others=False):
 
 
 if __name__ == '__main__':
-    main(preprocess=True, overwrite=False)
+    main(preprocess=True, overwrite=True)
     model = load_model()
     process_wav(model, 'prepared/test/SN-2016.01.06-TA-germany.wav', allowedSpeakers=[0, 2, 12])
     process_wav(model, 'prepared/test/RA-2021.06-MU-borba_s_vreditelyami.wav', allowedSpeakers=[0, 1, 5])

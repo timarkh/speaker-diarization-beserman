@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from pathlib import Path
-
+import random
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
@@ -45,51 +45,46 @@ def prepare_labels(
     speaker2 = np.zeros(n_frames, dtype=np.uint16)
     boundary = np.zeros(n_frames, dtype=np.uint8)
 
+    annotations_shuffled = []
+
     for speaker_name in sorted(speaker_map):
-        # Interviewers come first, so that if their speech overlaps with somebody else's,
-        # these frames are encoded as belonging to the native speakers
         if speaker_name not in annotations:
              continue
-        annots = annotations[speaker_name]
+        for ann in annotations[speaker_name]:
+            annotations_shuffled.append((speaker_map[speaker_name], ann["start_ms"], ann["end_ms"]))
+    random.shuffle(annotations_shuffled)
 
-        speaker_id = speaker_map[speaker_name]
-        # print(speaker_name, speaker_id)
+    for ann in annotations_shuffled:
+        spID = ann[0]
+        start = ann[1]
+        end = ann[2]
 
-        for ann in annots:
-            start = ann["start_ms"]
-            end = ann["end_ms"]
+        # frames belonging to this clause
+        mask = (frame_times >= start) & (frame_times < end)
+        speech[mask] = 1
+        speaker[mask] = spID
+        # print(mask, speaker[mask])
 
-            # frames belonging to this clause
-            mask = (frame_times >= start) & (frame_times < end)
+        # # boundary window
+        # bmask = (
+        #     frame_times >= end - boundary_width_ms
+        # ) & (
+        #     frame_times <= end + boundary_width_ms
+        # )
+        #
+        # boundary[bmask] = 1
 
-            speech[mask] = 1
-            speaker[mask] = speaker_id
-            # print(mask, speaker[mask])
+        boundary_frame = np.argmin(np.abs(frame_times - end))
+        for iFrame in range(max(0, boundary_frame - 5), min(len(boundary), boundary_frame + 5)):
+            boundary[iFrame] = 1.0 / (1 + abs(iFrame - boundary_frame))
 
-            # # boundary window
-            # bmask = (
-            #     frame_times >= end - boundary_width_ms
-            # ) & (
-            #     frame_times <= end + boundary_width_ms
-            # )
-            #
-            # boundary[bmask] = 1
-
-            boundary_frame = np.argmin(np.abs(frame_times - end))
-            for iFrame in range(max(0, boundary_frame - 2), min(len(boundary), boundary_frame + 3)):
-                boundary[iFrame] = 1.0 / (1 + abs(iFrame - boundary_frame))
     #Now, fill speaker2 (second speaker talking at the same time, if any)
-    for speaker_name in sorted(speaker_map, reverse=True):
-        if speaker_name not in annotations:
-             continue
-        annots = annotations[speaker_name]
-        speaker_id = speaker_map[speaker_name]
-
-        for ann in annots:
-            start = ann["start_ms"]
-            end = ann["end_ms"]
-            mask = (frame_times >= start) & (frame_times < end)
-            speaker2[mask] = speaker_id
+    for ann in annotations_shuffled[::-1]:
+        spID = ann[0]
+        start = ann[1]
+        end = ann[2]
+        mask = (frame_times >= start) & (frame_times < end)
+        speaker2[mask] = spID
 
     return speech, speaker, speaker2, boundary
 
@@ -206,7 +201,7 @@ class ClauseSegmentationModel(nn.Module):
     def __init__(
         self,
         input_size=128,
-        hidden_size=86,
+        hidden_size=96,
         num_layers=2,
         num_speakers=11,
         dropout=0.42,

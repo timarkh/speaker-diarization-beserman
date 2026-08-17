@@ -48,7 +48,7 @@ def augment_waveform(waveform, sr=16000, segment_seconds=120):
 
         if random.random() < 0.15:
             delay_ms = random.uniform(20, 80)
-            attenuation = random.uniform(0.1, 0.4)
+            attenuation = random.uniform(0.1, 0.3)
             delay = int(sr * delay_ms / 1000)
             if 0 < delay < len(segment):
                 segment[delay:] += (
@@ -60,7 +60,7 @@ def augment_waveform(waveform, sr=16000, segment_seconds=120):
         # ----------------------------------------------------------
 
         if random.random() < 0.20:
-            n_steps = random.uniform(-0.6, 0.6)
+            n_steps = random.uniform(-0.4, 0.4)
             segment = librosa.effects.pitch_shift(
                 segment,
                 sr=sr,
@@ -84,7 +84,7 @@ def extract_two_f0(
         hop_length=160,
         win_length=400,
         fmin=79,
-        fmax=380,
+        fmax=390,
         n_harmonics=6,
         min_f0_distance=30,
 ):
@@ -126,7 +126,6 @@ def extract_two_f0(
         sr=sr,
         n_fft=n_fft,
     )
-    print('Frequencies calculated.')
 
     # ------------------------------------------------------------
     # Restrict spectrum to plausible F0 range
@@ -318,8 +317,8 @@ def extract_features(
     # F0-related features
     f0, voiced_flag, voiced_prob = librosa.pyin(
         waveform,
-        fmin=80,
-        fmax=380,
+        fmin=79,
+        fmax=390,
         sr=sr,
         frame_length=n_fft,
         hop_length=hop_length,
@@ -350,11 +349,16 @@ def extract_features(
     )
     invalid = (
             np.isnan(f0)
-            | (sal2 <= 0.3)
+            | (sal2 <= 0.4)
             | (
                     ~np.isnan(f0)
-                    & (f0_2 >= 1.9 * f0)
-                    & (f0_2 <= 2.1 * f0)
+                    & (f0_2 >= 1.85 * f0)
+                    & (f0_2 <= 2.15 * f0)
+            )
+            | (
+                    ~np.isnan(f0)
+                    & (f0 >= 1.85 * f0_2)
+                    & (f0 <= 2.15 * f0_2)
             )
     )
     f0_2[invalid] = np.nan

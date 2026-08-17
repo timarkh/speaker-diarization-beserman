@@ -85,7 +85,8 @@ def create_chunks(features, frame_times, chunk_size=1000, overlap=500):
 
 def get_segments(outputs, timeChunk, speakerCodes, minBoundaryDist, minClauseMs, chunk_size=1000,
                  allowedSpeakers=None,
-                 speakerCollate=None):
+                 speakerCollate=None,
+                 cutoffSpeechMargin=0.62):
     """
     Get segments for one chunk of frames.
     :return: {speaker: [segments in seconds]}
@@ -127,11 +128,30 @@ def get_segments(outputs, timeChunk, speakerCodes, minBoundaryDist, minClauseMs,
     boundary = torch.sigmoid(outputs["boundary"]).squeeze().cpu().numpy()
     bndPeaks, bndProps = find_peaks(
         boundary,
-        height=0.07,
+        height=0.08,
         distance=minBoundaryDist
     )
     # print([(t[0].item(), t[1].item())
     #        for t in zip(speech, speaker)])
+
+
+    for i in range(len(speaker)):
+        # Segments adjacent to someone's speech are overrecognized as belonging to the native speakers
+        if (speaker[i] != 0
+                and secondBestSpeaker[i] == 0
+                and not speakerCodes[speaker[i]].startswith('Interviewer')
+                and margin[i] < cutoffSpeechMargin):
+            speaker[i] = 0
+            speech[i] = 0
+
+    for i in range(len(speaker)):
+        # With the interviewers, it's vice versa
+        if (speaker[i] == 0
+                and secondBestSpeaker[i] > 0
+                and speakerCodes[secondBestSpeaker[i] - 1].startswith('Interviewer')
+                and margin[i] < cutoffSpeechMargin):
+            speaker[i] = secondBestSpeaker[i]
+            speech[i] = 1
 
     for iFrame in range(chunk_size):
         curSpeaker = speaker[iFrame]
@@ -141,7 +161,7 @@ def get_segments(outputs, timeChunk, speakerCodes, minBoundaryDist, minClauseMs,
         curTime = timeChunk[iFrame]
         curBoundary = (iFrame in bndPeaks)
 
-        print(curTime, curSpeaker, curSecondBestSpeaker, curMargin, curSpeech, curBoundary)
+        # print(curTime, curSpeaker, curSecondBestSpeaker, curMargin, curSpeech, curBoundary)
 
         if curSpeaker > 0:
             curSpeaker = speakerCodes[curSpeaker - 1]
