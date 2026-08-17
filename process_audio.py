@@ -9,7 +9,7 @@ import random
 TARGET_SR = 16000
 
 
-def augment_waveform(waveform, sr=16000, segment_seconds=200):
+def augment_waveform(waveform, sr=16000, segment_seconds=120):
     """
     Randomly augment a waveform.
 
@@ -46,7 +46,7 @@ def augment_waveform(waveform, sr=16000, segment_seconds=200):
         # Echo
         # ----------------------------------------------------------
 
-        if random.random() < 0.20:
+        if random.random() < 0.15:
             delay_ms = random.uniform(20, 80)
             attenuation = random.uniform(0.1, 0.4)
             delay = int(sr * delay_ms / 1000)
@@ -360,26 +360,26 @@ def extract_features(
     f0_2[invalid] = np.nan
     sal2[invalid] = 0.0
 
-    print(
-        f"{'Frame':>5}  "
-        f"{'Time(ms)':>10}  "
-        f"{'pYIN F0':>8}  "
-        f"{'F0_1':>8}  "
-        f"{'F0_2':>8}  "
-        f"{'sal_1':>8}  "
-        f"{'sal_2':>8}"
-    )
-    for i, (a, b, c, d, e) in enumerate(
-            zip(f0, f0_1, f0_2, sal1, sal2)
-    ):
-        print(
-            f"{i:5d}  "
-            f"{a:8.2f}  "
-            f"{b:8.2f}  "
-            f"{c:8.2f}  "
-            f"{d:8.2f}  "
-            f"{e:8.2f}"
-        )
+    # print(
+    #     f"{'Frame':>5}  "
+    #     f"{'Time(ms)':>10}  "
+    #     f"{'pYIN F0':>8}  "
+    #     f"{'F0_1':>8}  "
+    #     f"{'F0_2':>8}  "
+    #     f"{'sal_1':>8}  "
+    #     f"{'sal_2':>8}"
+    # )
+    # for i, (a, b, c, d, e) in enumerate(
+    #         zip(f0, f0_1, f0_2, sal1, sal2)
+    # ):
+    #     print(
+    #         f"{i:5d}  "
+    #         f"{a:8.2f}  "
+    #         f"{b:8.2f}  "
+    #         f"{c:8.2f}  "
+    #         f"{d:8.2f}  "
+    #         f"{e:8.2f}"
+    #     )
 
     f0_2_clean = np.nan_to_num(f0_2, nan=1.0)
     log_f0_2 = np.log(f0_2_clean)

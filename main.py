@@ -200,23 +200,26 @@ def preprocess_eaf(sr=16000, overwrite=False):
 
             print(f"  Audio : {pathSound.name}")
             tiers = parse_eaf(Path(fnameEafFull))
-            if random.random() < 0.15 and len([t for t in tiers if len(tiers[t]) >= 3]) >= 2:
-                outPath = 'prepared/validation'
-            else:
-                outPath = 'prepared/train'
-            fnameNpz = os.path.join(outPath, fnameEaf[:-3] + 'npz')
             fnameNpzTrain = os.path.join('prepared/train', fnameEaf[:-3] + 'npz')
             fnameNpzValid = os.path.join('prepared/validation', fnameEaf[:-3] + 'npz')
             if os.path.exists(fnameNpzTrain) or os.path.exists(fnameNpzValid):
                 print('Skipping this file.')
                 continue
-            if 'other' in tiers and len(tiers['other']) > 0.6 * sum(len(t) for t in tiers):
+            if 'other' in tiers and len(tiers['other']) > 0.75 * sum(len(t) for t in tiers):
                 print('Skipping this file because it contains too many unknown speakers.')
                 continue
 
+            if random.random() < 0.13 and len(tiers) >= 2:
+                outPath = 'prepared/validation'
+            else:
+                outPath = 'prepared/train'
+            fnameNpz = os.path.join(outPath, fnameEaf[:-3] + 'npz')
+
             waveform = load_audio(pathSound, sr=sr)
             print('Waveform loaded, size: ', waveform.size)
-            waveform = augment_waveform(waveform)
+            if fnameNpz == fnameNpzTrain:
+                waveform = augment_waveform(waveform)
+                # Only augment training data
 
             duration = len(waveform) / (sr * 60)
 
@@ -301,11 +304,11 @@ def process_wav_files(model, others=False):
 
 
 if __name__ == '__main__':
-    # main(preprocess=True, overwrite=False)
+    main(preprocess=True, overwrite=False)
     model = load_model()
-    process_wav(model, 'prepared/test/RA-2021.06-MU-borba_s_vreditelyami.wav', allowedSpeakers=[0, 1, 5])
     process_wav(model, 'prepared/test/SN-2016.01.06-TA-germany.wav', allowedSpeakers=[0, 2, 12])
-    process_wav_files(model)
+    process_wav(model, 'prepared/test/RA-2021.06-MU-borba_s_vreditelyami.wav', allowedSpeakers=[0, 1, 5])
+    # process_wav_files(model)
     # process_wav(model, 'prepared/test/RSK67-2026.08.03-MU-perepesj_piroshki_kwarnjanj.wav',
     #             allowedSpeakers=[0, 1, 17],
     #             speakerCollate={

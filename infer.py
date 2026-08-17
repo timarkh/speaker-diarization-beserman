@@ -96,7 +96,7 @@ def get_segments(outputs, timeChunk, speakerCodes, minBoundaryDist, minClauseMs,
         allowedSpeakers = []
 
     allowOther = (not allowedSpeakers or (any(speakerCodes[sp - 1] == 'other' for sp in allowedSpeakers)))
-    minFramesBreak = 10
+    minFramesBreak = 7
     segStarts = {speakerCodes[s - 1]: -1 for s in allowedSpeakers if s != 0}
     segEnds = {speakerCodes[s - 1]: -1 for s in allowedSpeakers if s != 0}
     segBestGuess = {speakerCodes[s - 1]: False for s in allowedSpeakers if s != 0}  # Whether this speaker has been the first guess for this segment at least in one frame
@@ -127,7 +127,7 @@ def get_segments(outputs, timeChunk, speakerCodes, minBoundaryDist, minClauseMs,
     boundary = torch.sigmoid(outputs["boundary"]).squeeze().cpu().numpy()
     bndPeaks, bndProps = find_peaks(
         boundary,
-        height=0.025,
+        height=0.07,
         distance=minBoundaryDist
     )
     # print([(t[0].item(), t[1].item())
@@ -140,6 +140,8 @@ def get_segments(outputs, timeChunk, speakerCodes, minBoundaryDist, minClauseMs,
         curSpeech = speech[iFrame]
         curTime = timeChunk[iFrame]
         curBoundary = (iFrame in bndPeaks)
+
+        print(curTime, curSpeaker, curSecondBestSpeaker, curMargin, curSpeech, curBoundary)
 
         if curSpeaker > 0:
             curSpeaker = speakerCodes[curSpeaker - 1]
@@ -164,7 +166,10 @@ def get_segments(outputs, timeChunk, speakerCodes, minBoundaryDist, minClauseMs,
                     # If the previous frame was still attributed to a speaker,
                     # then remember this timestamp as a potential end of the segment
                     segEnds[spSeg] = curTime
-                if (curSpeech == 0 and curMargin > 0.1) or spSeg != curSecondBestSpeaker or curMargin > 0.07:
+                if ((curSpeech == 0 and curMargin > 0.2)
+                        or spSeg != curSecondBestSpeaker
+                        or not (curSpeech == 1 and curSpeaker == 0 and spSeg == curSecondBestSpeaker and curMargin < 0.7)
+                        or curMargin > 0.1):
                     framesSinceLastSeen[spSeg] += 1
                 else:
                     framesSinceLastSeen[spSeg] = 0
@@ -177,7 +182,7 @@ def get_segments(outputs, timeChunk, speakerCodes, minBoundaryDist, minClauseMs,
                     segBestGuess[spSeg] = False
             elif (spSeg == curSpeaker
                   or (curSpeech != 0 and curSecondBestSpeaker != 0
-                      and spSeg == curSecondBestSpeaker and curMargin < 0.35)
+                      and spSeg == curSecondBestSpeaker and curMargin < 0.7)
                   or (curSpeech == 0 and curSecondBestSpeaker != 0
                       and spSeg == curSecondBestSpeaker and curMargin < 0.3)):
                 # print(curMargin, noSpeech, spSeg, curSecondBestSpeaker)

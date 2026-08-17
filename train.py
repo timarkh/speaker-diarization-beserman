@@ -209,7 +209,7 @@ class ClauseSegmentationModel(nn.Module):
         hidden_size=86,
         num_layers=2,
         num_speakers=11,
-        dropout=0.5,
+        dropout=0.42,
     ):
         super().__init__()
 
@@ -351,7 +351,7 @@ def plot_learning_curve(train_losses, valid_losses):
     plt.savefig("loss.png", dpi=150)
 
 
-def soft_speaker_loss(logits, speaker, speaker2, secondary_weight=0.3):
+def soft_speaker_loss(logits, speaker, speaker2, secondary_weight=0.2):
     log_probs = torch.log_softmax(logits, dim=-1)
     primary_loss = -log_probs[
         torch.arange(logits.shape[0], device=logits.device),
@@ -377,7 +377,7 @@ def soft_speaker_loss(logits, speaker, speaker2, secondary_weight=0.3):
     return (loss / weights).mean()
 
 
-def train_model(model, num_speakers, max_epochs=80, early_stop=5, min_delta=1e-3):
+def train_model(model, num_speakers, max_epochs=100, early_stop=5, min_delta=1e-3):
     trainLoader = DataLoader(
         SpeechDataset("prepared/train"),
         batch_size=16,
@@ -392,13 +392,13 @@ def train_model(model, num_speakers, max_epochs=80, early_stop=5, min_delta=1e-3
     )
     # speaker_loss_fn = torch.nn.CrossEntropyLoss()
     speech_loss_fn = torch.nn.CrossEntropyLoss()
-    boundary_loss_fn = torch.nn.BCEWithLogitsLoss(pos_weight = torch.tensor([20]))  # Assuming non-boundary frames occur 20 times more often
+    boundary_loss_fn = torch.nn.BCEWithLogitsLoss(pos_weight = torch.tensor([30]))  # Assuming non-boundary frames occur 30 times more often
     # boundary_loss_fn = torch.nn.MSELoss() # For Gaussian-like distributions of probabilities around peaks
     # boundary_loss_fn = torch.nn.SmoothL1Loss() # An alternative
     optimizer = torch.optim.Adam(
         model.parameters(),
-        lr=3e-4,
-        weight_decay=5e-5,
+        lr=2e-5,
+        weight_decay=1e-5,
     )
 
     train_losses = []
@@ -439,7 +439,7 @@ def train_model(model, num_speakers, max_epochs=80, early_stop=5, min_delta=1e-3
 
             loss = (
                     1.0 * speaker_loss
-                    + 0.5 * speech_loss
+                    + 0.7 * speech_loss
                     + 2.0 * boundary_loss
             )
 
@@ -478,9 +478,9 @@ def train_model(model, num_speakers, max_epochs=80, early_stop=5, min_delta=1e-3
                 )
 
                 loss = (
-                    1.0 * speaker_loss
-                    + 0.5 * speech_loss
-                    + 2.0 * boundary_loss
+                        1.0 * speaker_loss
+                        + 0.7 * speech_loss
+                        + 2.0 * boundary_loss
                 )
 
                 valid_epoch_loss += loss.item()
