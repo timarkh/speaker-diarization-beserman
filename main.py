@@ -257,8 +257,8 @@ def main(preprocess=True, overwrite=False):
 def load_model():
     device = torch.device("cpu")
     model = ClauseSegmentationModel(
-        input_size=128,
-        hidden_size=96,
+        input_size=127,
+        hidden_size=72,
         num_layers=2,
         num_speakers=len(speakerMap),
     )
@@ -304,11 +304,16 @@ def process_wav_files(model, others=False):
 
 
 if __name__ == '__main__':
-    main(preprocess=True, overwrite=True)
+    # main(preprocess=True, overwrite=True)
     model = load_model()
-    process_wav(model, 'prepared/test/SN-2016.01.06-TA-germany.wav', allowedSpeakers=[0, 2, 12])
-    process_wav(model, 'prepared/test/RA-2021.06-MU-borba_s_vreditelyami.wav', allowedSpeakers=[0, 1, 5])
+    # process_wav(model, 'prepared/test/SN-2016.01.06-TA-germany.wav', allowedSpeakers=[0, 2, 12])
+    # process_wav(model, 'prepared/test/RA-2021.06-MU-borba_s_vreditelyami.wav', allowedSpeakers=[0, 1, 5])
     # process_wav_files(model)
+    process_wav(model, 'wav/for_masha_2026.11.10/AL_AP-2021.07.27-MU-discussion.wav', allowedSpeakers=[0, 1, 3, 4])
+    process_wav(model, 'wav/for_masha_2026.11.10/AL_MAB81-2024.10.24-MU-razgovor.wav', allowedSpeakers=[0, 1, 3, 7])
+    process_wav(model, 'wav/for_masha_2026.11.10/RA-2024.10.25-MU-zhivot.wav', allowedSpeakers=[0, 1, 5])
+    process_wav(model, 'wav/for_masha_2026.11.10/FAS-2021.07.27-MU-chorogan_gibijan.wav', allowedSpeakers=[0, 1, 17],
+                speakerCollate={'VN': 'other', 'AP': 'other'})
     # process_wav(model, 'prepared/test/RSK67-2026.08.03-MU-perepesj_piroshki_kwarnjanj.wav',
     #             allowedSpeakers=[0, 1, 17],
     #             speakerCollate={

@@ -200,8 +200,8 @@ def write_training_dataset(
 class ClauseSegmentationModel(nn.Module):
     def __init__(
         self,
-        input_size=128,
-        hidden_size=96,
+        input_size=127,
+        hidden_size=72,
         num_layers=2,
         num_speakers=11,
         dropout=0.42,
@@ -230,7 +230,7 @@ class ClauseSegmentationModel(nn.Module):
         Parameters
         ----------
         x : FloatTensor
-            (batch, frames, 128)
+            (batch, frames, 127)
 
         Returns
         -------
@@ -372,7 +372,7 @@ def soft_speaker_loss(logits, speaker, speaker2, secondary_weight=0.2):
     return (loss / weights).mean()
 
 
-def train_model(model, num_speakers, max_epochs=100, early_stop=5, min_delta=1e-3):
+def train_model(model, num_speakers, max_epochs=100, early_stop=7, min_delta=1e-3):
     trainLoader = DataLoader(
         SpeechDataset("prepared/train"),
         batch_size=16,
@@ -392,7 +392,7 @@ def train_model(model, num_speakers, max_epochs=100, early_stop=5, min_delta=1e-
     # boundary_loss_fn = torch.nn.SmoothL1Loss() # An alternative
     optimizer = torch.optim.Adam(
         model.parameters(),
-        lr=2e-5,
+        lr=3e-5,
         weight_decay=1e-5,
     )
 
@@ -435,7 +435,7 @@ def train_model(model, num_speakers, max_epochs=100, early_stop=5, min_delta=1e-
             loss = (
                     1.0 * speaker_loss
                     + 0.7 * speech_loss
-                    + 2.0 * boundary_loss
+                    + 0.7 * boundary_loss
             )
 
             loss.backward()
@@ -475,7 +475,7 @@ def train_model(model, num_speakers, max_epochs=100, early_stop=5, min_delta=1e-
                 loss = (
                         1.0 * speaker_loss
                         + 0.7 * speech_loss
-                        + 2.0 * boundary_loss
+                        + 0.7 * boundary_loss
                 )
 
                 valid_epoch_loss += loss.item()

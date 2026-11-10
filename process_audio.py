@@ -272,14 +272,14 @@ def extract_features(
     Returns
     -------
     features : np.ndarray
-        Shape (n_frames, 128):
+        Shape (n_frames, 127):
             40 log-Mel
             40 delta
             40 delta-delta
              1 RMS
              1 log(F0)
              1 Δlog(F0)
-             1 log(F0_2) -- potential second speaker
+             # 1 log(F0_2) -- potential second speaker
              1 second_f0_confidence
              1 salience(F0_2)
              1 voiced probability
@@ -385,9 +385,10 @@ def extract_features(
     #         f"{e:8.2f}"
     #     )
 
-    f0_2_clean = np.nan_to_num(f0_2, nan=1.0)
-    log_f0_2 = np.log(f0_2_clean)
-    log_f0_2[np.isnan(f0_2)] = 0.0
+    # f0_2_clean = np.nan_to_num(f0_2, nan=1.0)
+    # log_f0_2 = np.log(f0_2_clean)
+    # log_f0_2[np.isnan(f0_2)] = 0.0
+    sal2[np.isnan(f0_2)] = 0.0
     second_f0_confidence = sal2 / (sal1 + 1e-8)
     print('F0_2 calculated.')
 
@@ -414,7 +415,7 @@ def extract_features(
     delta2 = delta2[:, :n_frames]
     rms = rms[:, :n_frames]
     log_f0 = log_f0[:n_frames, None].T
-    log_f0_2 = log_f0_2[:n_frames, None].T
+    # log_f0_2 = log_f0_2[:n_frames, None].T
     sal2 = sal2[:n_frames, None].T
     second_f0_confidence = second_f0_confidence[:n_frames, None].T
     voiced_prob = voiced_prob[:n_frames, None].T
@@ -441,7 +442,7 @@ def extract_features(
             rms,
             log_f0,
             delta_f0,
-            log_f0_2,
+            # log_f0_2,
             sal2,
             second_f0_confidence,
             voiced_prob,

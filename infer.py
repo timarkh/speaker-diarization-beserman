@@ -86,7 +86,7 @@ def create_chunks(features, frame_times, chunk_size=1000, overlap=500):
 def get_segments(outputs, timeChunk, speakerCodes, minBoundaryDist, minClauseMs, chunk_size=1000,
                  allowedSpeakers=None,
                  speakerCollate=None,
-                 cutoffSpeechMargin=0.62):
+                 cutoffSpeechMargin=0.55):
     """
     Get segments for one chunk of frames.
     :return: {speaker: [segments in seconds]}
@@ -128,19 +128,20 @@ def get_segments(outputs, timeChunk, speakerCodes, minBoundaryDist, minClauseMs,
     boundary = torch.sigmoid(outputs["boundary"]).squeeze().cpu().numpy()
     bndPeaks, bndProps = find_peaks(
         boundary,
-        height=0.08,
+        height=0.15,
         distance=minBoundaryDist
     )
     # print([(t[0].item(), t[1].item())
     #        for t in zip(speech, speaker)])
 
-
     for i in range(len(speaker)):
-        # Segments adjacent to someone's speech are overrecognized as belonging to the native speakers
+        # Segments adjacent to someone's speech are overrecognized as belonging to the native speakers,
+        # especially on the right of real segments
         if (speaker[i] != 0
                 and secondBestSpeaker[i] == 0
-                and not speakerCodes[speaker[i]].startswith('Interviewer')
-                and margin[i] < cutoffSpeechMargin):
+                and not speakerCodes[speaker[i] - 1].startswith('Interviewer')
+                and (margin[i] < 0.7 * cutoffSpeechMargin
+                     or (i > 0 and margin[i-1] > margin[i] and margin[i] < cutoffSpeechMargin))):
             speaker[i] = 0
             speech[i] = 0
 
